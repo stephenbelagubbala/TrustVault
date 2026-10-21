@@ -1,0 +1,34 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document Details - TrustVault</title>
+</head>
+<body>
+    <h1>Document Details</h1>
+
+    <p><strong>Filename:</strong> {{ document.original_filename }}</p>
+    <p><strong>File size:</strong> {{ "%.2f"|format(file_size_kb) }} KB</p>
+
+    <p>
+        <strong>Uploaded:</strong>
+        {{ document.uploaded_at or "Not available" }}
+    </p>
+
+    <p>
+        <strong>File type:</strong>
+        {{ document.original_filename.rsplit(".", 1)[-1].upper()
+           if "." in document.original_filename else "Unknown" }}
+    </p>
+
+    <p>
+        <a href="{{ url_for('documents') }}">Back to Documents</a>
+    </p>
+
+    <a href="{{ url_for('download_document', document_id=document.id) }}">
+        Download Document
+    </a>
+</body>
+</html>

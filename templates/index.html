@@ -1,0 +1,55 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>TrustVault | Secure Document Sharing</title>
+    <style>
+        body { margin: 0; font-family: Arial; background: #f3f6fb;
+               color: #172033; }
+        header { background: #14213d; color: white; padding: 22px 8%; }
+        main { max-width: 750px; margin: 65px auto; padding: 20px; }
+        .panel { background: white; padding: 35px; border-radius: 14px; }
+        a, button { display: inline-block; margin: 8px 8px 8px 0;
+                     padding: 11px 16px; border-radius: 6px; }
+        a { background: #14213d; color: white; text-decoration: none; }
+        button { background: #a11; color: white; border: 0; cursor: pointer; }
+        .error { color: #b91c1c; }
+        .success { color: #166534; }
+    </style>
+</head>
+<body>
+<header><strong>🔐 TrustVault</strong></header>
+<main>
+    <div class="panel">
+        <h1>Secure Document Sharing</h1>
+        <p>Store, share, and track access to your documents.</p>
+
+        {% for category, message in get_flashed_messages(with_categories=true) %}
+            <p class="{{ category }}">{{ message }}</p>
+        {% endfor %}
+
+        {% if user %}
+            <h2>Welcome, {{ user.name }}!</h2>
+            
+            <p>
+                <a href="{{ url_for('documents') }}">My Documents</a>
+            </p>
+            
+            <p>You are logged in as {{ user.email }}.</p>
+
+            <form action="{{ url_for('logout') }}" method="POST">
+                <input type="hidden" name="csrf_token"
+                       value="{{ csrf_token() }}">
+                <button type="submit">Log out</button>
+            </form>
+        {% else %}
+            <p>Create an account or log in to get started.</p>
+            <a href="{{ url_for('register') }}">Register</a>
+            <a href="{{ url_for('login') }}">Log in</a>
+        {% endif %}
+    </div>
+</main>
+</body>
+</html>

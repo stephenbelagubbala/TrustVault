@@ -1,0 +1,245 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>My Documents | TrustVault</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #f3f6fb;
+            color: #172033;
+            margin: 0;
+            padding: 25px;
+        }
+
+        main {
+            max-width: 800px;
+            margin: 25px auto;
+            background: white;
+            padding: 28px;
+            border-radius: 12px;
+        }
+
+        input, button {
+            margin: 10px 0;
+            padding: 11px;
+        }
+
+        button {
+            background: #14213d;
+            color: white;
+            border: 0;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+
+        li { margin: 15px 0; }
+        .error { color: #b91c1c; }
+        .success { color: #166534; }
+    </style>
+</head>
+<body>
+    
+<nav style="background: #172033; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+    <a href="{{ url_for('home') }}"
+       style="color: white; margin-right: 20px; text-decoration: none;">
+        Home
+    </a>
+
+    <a href="{{ url_for('documents') }}"
+       style="color: white; margin-right: 20px; text-decoration: none;">
+        My Documents
+    </a>
+
+    <a href="{{ url_for('audit_history') }}"
+       style="color: white; text-decoration: none;">
+        Audit History
+    </a>
+</nav>
+
+<main>
+    <h1>My Documents</h1>
+    <p>
+    <a href="{{ url_for('dashboard') }}">Dashboard</a> |
+    <a href="{{ url_for('audit_history') }}">Audit History</a> |
+    <a href="{{ url_for('logout') }}">Logout</a>
+</p>
+    <p>Upload a PDF, TXT, or PNG file. Maximum size: 5 MB.</p>
+    
+<h2>Search My Documents</h2>
+
+<input
+    type="text"
+    id="documentSearch"
+    placeholder="Search documents by filename..."
+    oninput="searchDocuments()"
+>
+
+<script>
+function searchDocuments() {
+    const input = document.getElementById("documentSearch");
+    const filter = input.value.toLowerCase();
+    const documents = document.querySelectorAll(".my-document");
+
+    documents.forEach(function (document) {
+        const filename = document.textContent.toLowerCase();
+        document.style.display =
+            filename.includes(filter) ? "" : "none";
+    });
+}
+</script>
+
+
+    {% for category, message in get_flashed_messages(with_categories=true) %}
+        <p class="{{ category }}">{{ message }}</p>
+    {% endfor %}
+
+    <form method="POST" enctype="multipart/form-data">
+        <input type="hidden" name="csrf_token"
+               value="{{ csrf_token() }}">
+
+        <label for="file">Choose a document:</label>
+        <input
+            type="file"
+            id="file"
+            name="file"
+            accept=".pdf,.txt,.png"
+            required
+        >
+        <button type="submit">Upload document</button>
+    </form>
+
+    <hr>
+
+    <h2>Your uploaded documents</h2>
+
+    {% if documents %}
+    <ul>
+    {% for document in documents %}
+        <li class="my-document">
+            <strong>{{ document.original_filename }}</strong><br>
+
+            <small>
+                Uploaded: {{ document.uploaded_at.strftime("%Y-%m-%d %H:%M UTC") }}
+            </small><br>
+
+            <a href="{{ url_for('download_document', document_id=document.id) }}">
+                Download document
+            </a>
+            <br>
+
+            <a href="{{ url_for('document_details', document_id=document.id) }}">
+                View Details
+            </a>
+            <form
+    method="POST"
+    action="{{ url_for('delete_document', document_id=document.id) }}"
+    onsubmit="return confirm('Are you sure you want to delete this document?');"
+>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit">Delete Document</button>
+</form>
+            <br><br>
+
+<form method="POST"
+      action="{{ url_for('share_document', document_id=document.id) }}">
+
+    <input type="hidden" name="csrf_token"
+           value="{{ csrf_token() }}">
+
+    <label for="email-{{ document.id }}">
+        Share with user email:
+    </label>
+
+    <input
+        type="email"
+        id="email-{{ document.id }}"
+        name="email"
+        placeholder="Enter registered user's email"
+        required
+    >
+
+    <button type="submit">Share Document</button>
+</form>
+            </li>
+        {% endfor %}
+        </ul>
+    {% else %}
+        <p>You haven't uploaded any documents yet.</p>
+    {% endif %}
+
+    <p><a href="{{ url_for('home') }}">Back to home</a></p>
+    
+<hr>
+
+<h2>Shared with me</h2>
+<p>Documents other users have shared with you.</p>
+
+{% if shared_documents %}
+    <ul>
+        {% for document in shared_documents %}
+            <li>
+                <strong>{{ document.original_filename }}</strong>
+                <br>
+
+                <small>
+                    Uploaded:
+                    {{ document.uploaded_at.strftime("%Y-%m-%d %H:%M UTC") }}
+                </small>
+                <br>
+
+                <a href="{{ url_for(
+                    'download_document',
+                    document_id=document.id
+                ) }}">
+                    Download shared document
+                </a>
+            </li>
+        {% endfor %}
+    </ul>
+{% else %}
+    <p>No documents have been shared with you yet.</p>
+{% endif %}
+
+</main>
+
+<hr>
+<h2>Sharing Permissions You Manage</h2>
+<p>Manage users who can access your documents.</p>
+
+{% if owned_shares %}
+    <ul>
+        {% for share, recipient, document in owned_shares %}
+            <li>
+                <strong>{{ share.document_name if share.document_name else "Shared document" }}</strong>
+                <br>
+                Shared with: {{ recipient.email }}
+                <br>
+                <form
+                    method="POST"
+                    action="{{ url_for(
+                        'revoke_document_share',
+                        document_id=share.document_id,
+                        recipient_id=recipient.id
+                    ) }}"
+                    onsubmit="return confirm('Revoke this user’s access?');"
+                >
+                    <input
+                        type="hidden"
+                        name="csrf_token"
+                        value="{{ csrf_token() }}"
+                    >
+                    <button type="submit">Revoke Access</button>
+                </form>
+            </li>
+            <hr>
+        {% endfor %}
+    </ul>
+{% else %}
+    <p>You have not shared any documents yet.</p>
+{% endif %}
+
+</body>
+</html>

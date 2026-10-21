@@ -1,0 +1,63 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TrustVault - Audit History</title>
+</head>
+<body>
+    <h1>TrustVault Audit History</h1>
+
+    <p>Track document uploads, downloads, sharing, and access revocation.</p>
+
+    <p>
+        <a href="{{ url_for('documents') }}">Back to Documents</a>
+    </p>
+    
+<form method="GET" action="{{ url_for('audit_history') }}">
+    <label for="action">Filter by action:</label>
+
+    <select name="action" id="action">
+        <option value="">All actions</option>
+        <option value="UPLOAD" {% if selected_action == "UPLOAD" %}selected{% endif %}>Upload</option>
+        <option value="DOWNLOAD" {% if selected_action == "DOWNLOAD" %}selected{% endif %}>Download</option>
+        <option value="SHARE" {% if selected_action == "SHARE" %}selected{% endif %}>Share</option>
+        <option value="REVOKE_SHARE" {% if selected_action == "REVOKE_SHARE" %}selected{% endif %}>Revoke Share</option>
+        <option value="DELETE" {% if selected_action == "DELETE" %}selected{% endif %}>Delete</option>
+    </select>
+
+    <button type="submit">Filter</button>
+</form>
+
+
+    <table border="1" cellpadding="10">
+        <thead>
+            <tr>
+                <tr>
+    <th>Time</th>
+    <th>User</th>
+    <th>Action</th>
+    <th>Document</th>
+</tr>
+            </tr>
+        </thead>
+        
+<tbody>
+    {% for log, audit_user in logs %}
+    <tr>
+        <td>{{ log.timestamp or "N/A" }}</td>
+        <td>{{ audit_user.name }}</td>
+        <td>{{ log.action }}</td>
+        <td>{{ log.document_name or "N/A" }}</td>
+    </tr>
+    {% else %}
+    <tr>
+        <td colspan="4">No audit records found.</td>
+    </tr>
+    {% endfor %}
+</tbody>
+
+    </table>
+</body>
+</html>

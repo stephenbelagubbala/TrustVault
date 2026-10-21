@@ -1,0 +1,138 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TrustVault Dashboard</title>
+
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #f4f6f9;
+            margin: 0;
+            padding: 25px;
+            color: #222;
+        }
+
+        header {
+            background: #1e293b;
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+        }
+
+        nav {
+            margin-top: 15px;
+        }
+
+        nav a {
+            color: white;
+            margin-right: 18px;
+            text-decoration: none;
+        }
+
+        .cards {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+            margin: 25px 0;
+        }
+
+        .card {
+            background: white;
+            padding: 22px;
+            border-radius: 10px;
+            flex: 1;
+            min-width: 180px;
+            box-shadow: 0 2px 8px #00000012;
+        }
+
+        .number {
+            font-size: 30px;
+            font-weight: bold;
+            color: #2563eb;
+        }
+
+        table {
+            width: 100%;
+            background: white;
+            border-collapse: collapse;
+            margin-top: 15px;
+        }
+
+        th, td {
+            padding: 12px;
+            border: 1px solid #ddd;
+            text-align: left;
+        }
+
+        th {
+            background: #e8edf5;
+        }
+
+        @media (max-width: 600px) {
+            body {
+                padding: 12px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <header>
+        <h1>TrustVault Dashboard</h1>
+        <p>Secure document management at a glance.</p>
+
+        <nav>
+            <a href="{{ url_for('documents') }}">My Documents</a>
+            <a href="{{ url_for('audit_history') }}">Audit History</a>
+            <a href="{{ url_for('logout') }}">Logout</a>
+        </nav>
+    </header>
+
+    <h2>Document Summary</h2>
+
+    <section class="cards">
+        <div class="card">
+            <h3>My Documents</h3>
+            <p class="number">{{ total_documents }}</p>
+        </div>
+
+        <div class="card">
+            <h3>Shared With Me</h3>
+            <p class="number">{{ shared_with_me }}</p>
+        </div>
+
+        <div class="card">
+            <h3>Shared By Me</h3>
+            <p class="number">{{ shared_by_me }}</p>
+        </div>
+    </section>
+
+    <h2>Recent Activity</h2>
+
+    {% if recent_logs %}
+        <table>
+            <thead>
+                <tr>
+                    <th>Time</th>
+                    <th>Action</th>
+                    <th>Document</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for log in recent_logs %}
+                    <tr>
+                        <td>{{ log.timestamp or "N/A" }}</td>
+                        <td>{{ log.action }}</td>
+                        <td>{{ log.document_name or "N/A" }}</td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <p>No recent activity.</p>
+    {% endif %}
+</body>
+</html>
