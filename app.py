@@ -42,14 +42,24 @@ db = SQLAlchemy(app)
 
 
 # Database model
+
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(80), nullable=False)
     email = db.Column(db.String(120), unique=True, nullable=False)
     password_hash = db.Column(db.String(256), nullable=False)
-    created_at = db.Column(
-        db.DateTime, default=lambda: datetime.now(timezone.utc)
+
+    role = db.Column(
+        db.String(20),
+        nullable=False,
+        default="owner"
     )
+
+    created_at = db.Column(
+        db.DateTime,
+        default=lambda: datetime.now(timezone.utc)
+    )
+
 
 
 # Registration form
@@ -75,21 +85,29 @@ class RegisterForm(FlaskForm):
     )
     
     submit = SubmitField("Create account")
+
 class Document(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-
-    original_filename = db.Column(
-        db.String(255), nullable=False
-    )
-    stored_filename = db.Column(
-        db.String(100), unique=True, nullable=False
-    )
-
+    original_filename = db.Column(db.String(255), nullable=False)
+    stored_filename = db.Column(db.String(100), unique=True, nullable=False)
     uploaded_at = db.Column(
         db.DateTime,
         default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
+    user_id = db.Column(
+        db.Integer,
+        db.ForeignKey("user.id"),
+        nullable=False,
+        index=True
+    )
+
+    category = db.Column(
+        db.String(80),
+        nullable=False,
+        default="Uncategorized"
+    )
+
 
     user_id = db.Column(
         db.Integer,
@@ -132,6 +150,7 @@ class AuditLog(db.Model):
 
 
 # Document sharing model — separate from AuditLog
+
 class DocumentShare(db.Model):
     id = db.Column(db.Integer, primary_key=True)
 
@@ -147,6 +166,12 @@ class DocumentShare(db.Model):
         nullable=False
     )
 
+    permission = db.Column(
+        db.String(10),
+        nullable=False,
+        default="read"
+    )
+
     shared_at = db.Column(
         db.DateTime,
         default=lambda: datetime.now(timezone.utc),
@@ -160,6 +185,7 @@ class DocumentShare(db.Model):
             name="unique_document_share"
         ),
     )
+
 
 
     
@@ -181,6 +207,7 @@ def home():
     return render_template("index.html", user=user)
 
 
+
 @app.route("/register", methods=["GET", "POST"])
 def register():
     if session.get("user_id"):
@@ -196,22 +223,31 @@ def register():
         ).scalar_one_or_none()
 
         if existing_user:
-            flash("An account with that email already exists.", "error")
+            flash(
+                "An account with that email already exists.",
+                "error"
+            )
         else:
             user = User(
                 name=form.name.data.strip(),
                 email=email,
                 password_hash=generate_password_hash(
                     form.password.data
-                )
+                ),
+                role="owner"
             )
+
             db.session.add(user)
             db.session.commit()
 
-            flash("Account created! Please log in.", "success")
+            flash(
+                "Account created! Please log in.",
+                "success"
+            )
             return redirect(url_for("login"))
 
     return render_template("register.html", form=form)
+
 
 
 @app.route("/login", methods=["GET", "POST"])

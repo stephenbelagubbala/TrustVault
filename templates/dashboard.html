@@ -87,7 +87,10 @@
         <nav>
             <a href="{{ url_for('documents') }}">My Documents</a>
             <a href="{{ url_for('audit_history') }}">Audit History</a>
-            <a href="{{ url_for('logout') }}">Logout</a>
+            <form method="POST" action="{{ url_for('logout') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit">Logout</button>
+</form>
         </nav>
     </header>
 
