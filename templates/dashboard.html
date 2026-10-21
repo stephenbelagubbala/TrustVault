@@ -82,11 +82,25 @@
 <body>
     <header>
         <h1>TrustVault Dashboard</h1>
+       
+{% if is_admin %}
+    <p>Role: Administrator</p>
+    <a href="{{ url_for('admin_users') }}">Manage Users</a>
+{% else %}
+    <p>Role: Normal User</p>
+{% endif %}
+
+        <p>
+    Account Role:
+    <strong>{{ user.role | title }}</strong>
+</p>
         <p>Secure document management at a glance.</p>
 
         <nav>
             <a href="{{ url_for('documents') }}">My Documents</a>
-            <a href="{{ url_for('audit_history') }}">Audit History</a>
+            {% if user.role == "admin" %}
+    <a href="{{ url_for('audit_history') }}">Audit History</a>
+{% endif %}
             <form method="POST" action="{{ url_for('logout') }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <button type="submit">Logout</button>

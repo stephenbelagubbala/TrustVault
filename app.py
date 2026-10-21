@@ -5,6 +5,8 @@ from audit import log_audit
 from werkzeug.utils import secure_filename
 from flask_wtf.csrf import CSRFProtect
 from datetime import datetime, timezone
+from functools import wraps
+
 
 from flask import (
     Flask, render_template, redirect, url_for,
@@ -60,6 +62,28 @@ class User(db.Model):
         default=lambda: datetime.now(timezone.utc)
     )
 
+def admin_required(view_func):
+    @wraps(view_func)
+    def wrapped_view(*args, **kwargs):
+        user_id = session.get("user_id")
+
+        if not user_id:
+            flash("Please log in first.", "error")
+            return redirect(url_for("login"))
+
+        user = db.session.get(User, user_id)
+
+        if user is None:
+            session.clear()
+            flash("Please log in again.", "error")
+            return redirect(url_for("login"))
+
+        if user.role != "admin":
+            abort(403)
+
+        return view_func(*args, **kwargs)
+
+    return wrapped_view
 
 
 # Registration form
@@ -281,7 +305,7 @@ def login():
 def logout():
     session.clear()
     flash("You have logged out.", "success")
-    return redirect(url_for("home"))
+    return redirect(url_for("login"))
 
 
 @app.route("/documents", methods=["GET", "POST"])
@@ -716,6 +740,7 @@ def revoke_document_share(document_id, recipient_id):
 
 
 
+
 @app.route("/audit")
 def audit_history():
     user_id = session.get("user_id")
@@ -729,6 +754,14 @@ def audit_history():
     if user is None:
         session.clear()
         return redirect(url_for("login"))
+
+    # Only administrators can view global audit history.
+    if user.role != "admin":
+        flash(
+            "Access denied. Administrator privileges are required.",
+            "error"
+        )
+        abort(403)
 
     selected_action = request.args.get("action", "").strip()
 
@@ -748,6 +781,7 @@ def audit_history():
         logs=logs,
         selected_action=selected_action
     )
+
 
 
 
@@ -801,11 +835,26 @@ def dashboard():
 
     return render_template(
         "dashboard.html",
+        user=user,
         total_documents=total_documents,
         shared_with_me=shared_with_me,
         shared_by_me=shared_by_me,
-        recent_logs=recent_logs
+        recent_logs=recent_logs,
+        is_admin=(user.role == "admin")
     )
+    
+@app.route("/admin/users")
+@admin_required
+def admin_users():
+    users = db.session.execute(
+        db.select(User).order_by(User.id.desc())
+    ).scalars().all()
+
+    return render_template(
+        "admin_users.html",
+        users=users
+    )
+
 
 
 if __name__ == "__main__":
