@@ -24,17 +24,21 @@ from dotenv import load_dotenv
 load_dotenv()
 
 app = Flask(__name__)
-app.config["SECRET_KEY"] = os.getenv(
-    "SECRET_KEY", "dev-only-change-me"
+
+app.config["SECRET_KEY"] = os.getenv("SECRET_KEY")
+if not app.config["SECRET_KEY"]:
+    raise RuntimeError("SECRET_KEY environment variable is required.")
+
+app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv(
+    "DATABASE_URL",
+    "sqlite:///trustvault.db"
 )
-app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///trustvault.db"
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 app.config["MAX_CONTENT_LENGTH"] = 5 * 1024 * 1024  # 5 MB
 
 app.config["UPLOAD_FOLDER"] = os.path.join(
     app.root_path, "private_uploads"
 )
-
 os.makedirs(app.config["UPLOAD_FOLDER"], exist_ok=True)
 
 ALLOWED_EXTENSIONS = {"pdf", "txt", "png"}
@@ -389,18 +393,18 @@ def documents():
         .order_by(Document.uploaded_at.desc())
     ).scalars().all()
 
-    # Get documents shared with the logged-in user
+    # Get shared documents together with their permissions
     shared_documents = db.session.execute(
-        db.select(Document)
-        .join(
-            DocumentShare,
-            DocumentShare.document_id == Document.id
-        )
-        .filter(
-            DocumentShare.shared_with_user_id == user.id
-        )
-        .order_by(DocumentShare.shared_at.desc())
-    ).scalars().all()
+    db.select(Document, DocumentShare.permission)
+    .join(
+        DocumentShare,
+        DocumentShare.document_id == Document.id
+    )
+    .filter(
+        DocumentShare.shared_with_user_id == user.id
+    )
+    .order_by(DocumentShare.shared_at.desc())
+).all()
     
     owned_shares = db.session.execute(
         db.select(DocumentShare, User, Document)
@@ -427,8 +431,8 @@ def documents():
 
 
 
-@app.route("/documents/<int:document_id>/download")
 
+@app.route("/documents/<int:document_id>/download")
 def download_document(document_id):
     user_id = session.get("user_id")
 
@@ -441,24 +445,25 @@ def download_document(document_id):
         session.clear()
         return redirect(url_for("login"))
 
-    # Find the document
     document = db.session.get(Document, document_id)
 
     if document is None:
         abort(404)
 
-    # Check whether the user owns the document
+    # Check document ownership
     is_owner = document.user_id == user.id
 
-    # Check whether the document is shared with this user
-    has_access = db.session.execute(
+    # Check sharing permission
+    share = db.session.execute(
         db.select(DocumentShare).filter_by(
             document_id=document.id,
             shared_with_user_id=user.id
         )
-    ).scalar_one_or_none() is not None
+    ).scalar_one_or_none()
 
-    if not is_owner and not has_access:
+    if not is_owner and (
+        share is None or share.permission not in ("read", "edit")
+    ):
         abort(404)
 
     # Check whether the file exists
@@ -470,7 +475,7 @@ def download_document(document_id):
     if not os.path.isfile(storage_path):
         abort(404)
 
-    # Record the download in the audit log
+    # Record successful download
     audit = AuditLog(
         user_id=user.id,
         action="DOWNLOAD",
@@ -482,10 +487,12 @@ def download_document(document_id):
     db.session.commit()
 
     return send_file(
-       storage_path,
+        storage_path,
         as_attachment=True,
         download_name=document.original_filename
     )
+
+
 
 
 @app.route("/documents/<int:document_id>/details")
@@ -507,17 +514,20 @@ def document_details(document_id):
     if document is None:
         abort(404)
 
-    # Check document ownership or sharing permission
+    # Check document ownership
     is_owner = document.user_id == user.id
 
-    has_access = db.session.execute(
+    # Check sharing permission
+    share = db.session.execute(
         db.select(DocumentShare).filter_by(
             document_id=document.id,
             shared_with_user_id=user.id
         )
-    ).scalar_one_or_none() is not None
+    ).scalar_one_or_none()
 
-    if not is_owner and not has_access:
+    if not is_owner and (
+        share is None or share.permission not in ("read", "edit")
+    ):
         abort(404)
 
     # Calculate file size
@@ -535,6 +545,99 @@ def document_details(document_id):
         "document_details.html",
         document=document,
         file_size_kb=file_size_kb
+    )
+
+
+@app.route("/documents/<int:document_id>/edit", methods=["GET", "POST"])
+def edit_document(document_id):
+    user_id = session.get("user_id")
+
+    if not user_id:
+        flash("Please log in first.", "error")
+        return redirect(url_for("login"))
+
+    user = db.session.get(User, user_id)
+
+    if user is None:
+        session.clear()
+        return redirect(url_for("login"))
+
+    document = db.session.get(Document, document_id)
+
+    if document is None:
+        abort(404)
+
+    # Check ownership or Edit permission
+    is_owner = document.user_id == user.id
+
+    share = db.session.execute(
+        db.select(DocumentShare).filter_by(
+            document_id=document.id,
+            shared_with_user_id=user.id
+        )
+    ).scalar_one_or_none()
+
+    if not is_owner and (
+        share is None or share.permission != "edit"
+    ):
+        abort(403)
+
+    if request.method == "POST":
+        filename = request.form.get(
+            "original_filename", ""
+        ).strip()
+
+        category = request.form.get(
+            "category", ""
+        ).strip()
+
+        safe_filename = secure_filename(filename)
+
+        if (
+            not safe_filename
+            or len(safe_filename) > 255
+            or not category
+            or len(category) > 80
+            or "." not in safe_filename
+            or safe_filename.rsplit(".", 1)[1].lower()
+            not in ALLOWED_EXTENSIONS
+        ):
+            flash(
+                "Enter a valid filename and category.",
+                "error"
+            )
+            return redirect(
+                url_for("edit_document", document_id=document.id)
+            )
+
+        old_filename = document.original_filename
+        document.original_filename = safe_filename
+        document.category = category
+
+        try:
+            audit = AuditLog(
+                user_id=user.id,
+                action="EDIT",
+                document_id=document.id,
+                document_name=safe_filename
+            )
+            db.session.add(audit)
+            db.session.commit()
+
+        except Exception:
+            db.session.rollback()
+            app.logger.exception("Document edit failed")
+            flash("Could not update the document.", "error")
+            return redirect(
+                url_for("edit_document", document_id=document.id)
+            )
+
+        flash("Document details updated successfully.", "success")
+        return redirect(url_for("document_details", document_id=document.id))
+
+    return render_template(
+        "edit_document.html",
+        document=document
     )
 
 
@@ -626,6 +729,12 @@ def share_document(document_id):
     recipient_email = request.form.get(
         "email", ""
     ).strip().lower()
+    # Validate the requested sharing permission
+    permission = request.form.get("permission", "read").strip().lower()
+
+    if permission not in ("read", "edit"):
+        flash("Invalid sharing permission.", "error")
+        return redirect(url_for("documents"))
 
     recipient = db.session.execute(
         db.select(User).filter_by(email=recipient_email)
@@ -653,7 +762,8 @@ def share_document(document_id):
 
         share = DocumentShare(
             document_id=document.id,
-            shared_with_user_id=recipient.id
+            shared_with_user_id=recipient.id,
+            permission=permission
         )
 
         audit = AuditLog(
@@ -786,8 +896,9 @@ def audit_history():
 
 
 
-with app.app_context():
-    db.create_all()
+if os.getenv("SKIP_DB_INIT") != "1":
+    with app.app_context():
+        db.create_all()
 
 @app.route("/dashboard")
 def dashboard():

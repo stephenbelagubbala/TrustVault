@@ -159,12 +159,25 @@ function searchDocuments() {
     </label>
 
     <input
-        type="email"
-        id="email-{{ document.id }}"
-        name="email"
-        placeholder="Enter registered user's email"
-        required
-    >
+    type="email"
+    id="email-{{ document.id }}"
+    name="email"
+    placeholder="Enter registered user's email"
+    required
+>
+
+<label for="permission-{{ document.id }}">
+    Access permission:
+</label>
+
+<select
+    id="permission-{{ document.id }}"
+    name="permission"
+    required
+>
+    <option value="read" selected>Read only</option>
+    <option value="edit">Edit</option>
+</select>
 
     <button type="submit">Share Document</button>
 </form>
@@ -184,9 +197,11 @@ function searchDocuments() {
 
 {% if shared_documents %}
     <ul>
-        {% for document in shared_documents %}
+        {% for document, permission in shared_documents %}
             <li>
                 <strong>{{ document.original_filename }}</strong>
+                <br>
+<small>Access permission: {{ permission|capitalize }}</small>
                 <br>
 
                 <small>

@@ -1,0 +1,52 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Edit Document - TrustVault</title>
+</head>
+<body>
+    <h1>Edit Document Details</h1>
+
+    {% for category, message in get_flashed_messages(with_categories=true) %}
+        <p class="{{ category }}">{{ message }}</p>
+    {% endfor %}
+
+    <form method="POST">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+        <label for="original_filename">Filename:</label>
+        <input
+            type="text"
+            id="original_filename"
+            name="original_filename"
+            value="{{ document.original_filename }}"
+            maxlength="255"
+            required
+        >
+
+        <br><br>
+
+        <label for="category">Category:</label>
+        <input
+            type="text"
+            id="category"
+            name="category"
+            value="{{ document.category }}"
+            maxlength="80"
+            required
+        >
+
+        <br><br>
+
+        <button type="submit">Save Changes</button>
+    </form>
+
+    <p>
+        <a href="{{ url_for('document_details', document_id=document.id) }}">
+            Cancel
+        </a>
+    </p>
+</body>
+</html>
