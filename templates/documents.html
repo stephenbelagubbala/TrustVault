@@ -124,11 +124,15 @@ function searchDocuments() {
     <ul>
     {% for document in documents %}
         <li class="my-document">
-            <strong>{{ document.original_filename }}</strong><br>
+<strong>{{ document.original_filename }}</strong><br>
 
-            <small>
-                Uploaded: {{ document.uploaded_at.strftime("%Y-%m-%d %H:%M UTC") }}
-            </small><br>
+<small>
+    Category: {{ document.category }}
+</small><br>
+
+<small>
+    Uploaded: {{ document.uploaded_at.strftime("%Y-%m-%d %H:%M UTC") }}
+</small><br>
 
             <a href="{{ url_for('download_document', document_id=document.id) }}">
                 Download document

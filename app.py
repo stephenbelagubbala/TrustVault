@@ -250,56 +250,53 @@ def home():
 
 @app.route("/register", methods=["GET", "POST"])
 def register():
-    if session.get("user_id"):
-        return redirect(url_for("home"))
+    user_id = session.get("user_id")
+
+    if user_id is not None:
+        logged_in_user = db.session.get(User, user_id)
+        if logged_in_user is not None:
+            return redirect(url_for("home"))
+        session.clear()
 
     form = RegisterForm()
 
     if form.validate_on_submit():
         email = form.email.data.strip().lower()
-
         existing_user = db.session.execute(
             db.select(User).filter_by(email=email)
         ).scalar_one_or_none()
 
         if existing_user:
-            flash(
-                "An account with that email already exists.",
-                "error"
-            )
+            flash("An account with that email already exists.", "error")
         else:
             user = User(
                 name=form.name.data.strip(),
                 email=email,
-                password_hash=generate_password_hash(
-                    form.password.data
-                ),
+                password_hash=generate_password_hash(form.password.data),
                 role="owner"
             )
-
             db.session.add(user)
             db.session.commit()
-
-            flash(
-                "Account created! Please log in.",
-                "success"
-            )
+            flash("Account created! Please log in.", "success")
             return redirect(url_for("login"))
 
     return render_template("register.html", form=form)
 
 
-
 @app.route("/login", methods=["GET", "POST"])
 def login():
-    if session.get("user_id"):
-        return redirect(url_for("home"))
+    user_id = session.get("user_id")
+
+    if user_id is not None:
+        logged_in_user = db.session.get(User, user_id)
+        if logged_in_user is not None:
+            return redirect(url_for("home"))
+        session.clear()
 
     form = LoginForm()
 
     if form.validate_on_submit():
         email = form.email.data.strip().lower()
-
         user = db.session.execute(
             db.select(User).filter_by(email=email)
         ).scalar_one_or_none()
@@ -309,7 +306,7 @@ def login():
         ):
             session.clear()
             session["user_id"] = user.id
-            flash("Welcome back!", "success")
+            flash("Logged in successfully.", "success")
             return redirect(url_for("home"))
 
         flash("Invalid email or password.", "error")
