@@ -176,7 +176,19 @@ class AuditLog(db.Model):
         index=True
     )
 
-
+def record_denied_attempt(user, action, document):
+    try:
+        audit = AuditLog(
+            user_id=user.id,
+            action=f"DENIED_{action}",
+            document_id=document.id,
+            document_name=document.original_filename,
+        )
+        db.session.add(audit)
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        app.logger.exception("Failed to record denied audit attempt")
 # Document sharing model — separate from AuditLog
 
 class DocumentShare(db.Model):
@@ -464,6 +476,7 @@ def download_document(document_id):
     if not is_owner and (
         share is None or share.permission not in ("read", "edit")
     ):
+        record_denied_attempt(user, "DOWNLOAD", document)
         abort(404)
 
     # Check whether the file exists
@@ -528,6 +541,7 @@ def document_details(document_id):
     if not is_owner and (
         share is None or share.permission not in ("read", "edit")
     ):
+        record_denied_attempt(user, "VIEW", document)
         abort(404)
 
     # Calculate file size
@@ -580,6 +594,7 @@ def edit_document(document_id):
     if not is_owner and (
         share is None or share.permission != "edit"
     ):
+        record_denied_attempt(user, "EDIT", document)
         abort(403)
 
     if request.method == "POST":
@@ -664,6 +679,7 @@ def delete_document(document_id):
 
     # Only the document owner can delete it
     if document.user_id != user.id:
+        record_denied_attempt(user, "DELETE", document)
         abort(403)
 
     filename = document.original_filename

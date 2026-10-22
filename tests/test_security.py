@@ -1,7 +1,7 @@
 
 import pytest
 
-from app import app, db, User, Document, DocumentShare
+from app import app, db, User, Document, DocumentShare, AuditLog
 
 
 @pytest.fixture
@@ -180,3 +180,61 @@ def test_editor_can_update_document_details(client, setup_app):
         document = db.session.get(Document, setup_app["document_id"])
         assert document.original_filename == "updated.txt"
         assert document.category == "Updated Category"
+def test_denied_download_is_audited(client, setup_app):
+    login_as(client, setup_app["outsider_id"])
+
+    response = client.get(
+        f"/documents/{setup_app['document_id']}/download"
+    )
+    assert response.status_code == 404
+
+    with app.app_context():
+        audit = db.session.execute(
+            db.select(AuditLog).filter_by(
+                user_id=setup_app["outsider_id"],
+                action="DENIED_DOWNLOAD",
+                document_id=setup_app["document_id"],
+            )
+        ).scalar_one_or_none()
+
+        assert audit is not None
+
+
+def test_denied_edit_is_audited(client, setup_app):
+    login_as(client, setup_app["reader_id"])
+
+    response = client.get(
+        f"/documents/{setup_app['document_id']}/edit"
+    )
+    assert response.status_code == 403
+
+    with app.app_context():
+        audit = db.session.execute(
+            db.select(AuditLog).filter_by(
+                user_id=setup_app["reader_id"],
+                action="DENIED_EDIT",
+                document_id=setup_app["document_id"],
+            )
+        ).scalar_one_or_none()
+
+        assert audit is not None
+
+
+def test_denied_delete_is_audited(client, setup_app):
+    login_as(client, setup_app["reader_id"])
+
+    response = client.post(
+        f"/documents/{setup_app['document_id']}/delete"
+    )
+    assert response.status_code == 403
+
+    with app.app_context():
+        audit = db.session.execute(
+            db.select(AuditLog).filter_by(
+                user_id=setup_app["reader_id"],
+                action="DENIED_DELETE",
+                document_id=setup_app["document_id"],
+            )
+        ).scalar_one_or_none()
+
+        assert audit is not None
