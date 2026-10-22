@@ -9,55 +9,112 @@
 <body>
     <h1>TrustVault Audit History</h1>
 
-    <p>Track document uploads, downloads, sharing, and access revocation.</p>
+    <p>
+        Track document uploads, downloads, edits, deletions,
+        sharing, access revocation, and denied actions.
+    </p>
 
     <p>
+        <a href="{{ url_for('dashboard') }}">Back to Dashboard</a> |
         <a href="{{ url_for('documents') }}">Back to Documents</a>
     </p>
+
     
 <form method="GET" action="{{ url_for('audit_history') }}">
-    <label for="action">Filter by action:</label>
+    <p>
+        <label for="action">Filter by action:</label>
+        <select name="action" id="action">
+            <option value="">All actions</option>
+            {% for action in [
+                "UPLOAD",
+                "DOWNLOAD",
+                "EDIT",
+                "DELETE",
+                "SHARE",
+                "REVOKE_SHARE",
+                "DENIED_DOWNLOAD",
+                "DENIED_EDIT",
+                "DENIED_DELETE"
+            ] %}
+                <option value="{{ action }}"
+                    {% if selected_action == action %}selected{% endif %}>
+                    {{ action.replace("_", " ") }}
+                </option>
+            {% endfor %}
+        </select>
+    </p>
 
-    <select name="action" id="action">
-        <option value="">All actions</option>
-        <option value="UPLOAD" {% if selected_action == "UPLOAD" %}selected{% endif %}>Upload</option>
-        <option value="DOWNLOAD" {% if selected_action == "DOWNLOAD" %}selected{% endif %}>Download</option>
-        <option value="SHARE" {% if selected_action == "SHARE" %}selected{% endif %}>Share</option>
-        <option value="REVOKE_SHARE" {% if selected_action == "REVOKE_SHARE" %}selected{% endif %}>Revoke Share</option>
-        <option value="DELETE" {% if selected_action == "DELETE" %}selected{% endif %}>Delete</option>
-    </select>
+    <p>
+        <label for="user">Search user:</label>
+        <input
+            type="text"
+            name="user"
+            id="user"
+            placeholder="Name or email"
+            value="{{ selected_user }}"
+        >
+    </p>
 
-    <button type="submit">Filter</button>
+    <p>
+        <label for="document">Search document:</label>
+        <input
+            type="text"
+            name="document"
+            id="document"
+            placeholder="Document name"
+            value="{{ selected_document }}"
+        >
+    </p>
+
+    <p>
+        <label for="start_date">From date:</label>
+        <input
+            type="date"
+            name="start_date"
+            id="start_date"
+            value="{{ start_date }}"
+        >
+    </p>
+
+    <p>
+        <label for="end_date">To date:</label>
+        <input
+            type="date"
+            name="end_date"
+            id="end_date"
+            value="{{ end_date }}"
+        >
+    </p>
+
+    <button type="submit">Apply filters</button>
+    <a href="{{ url_for('audit_history') }}">Clear filters</a>
 </form>
 
 
     <table border="1" cellpadding="10">
         <thead>
             <tr>
-                <tr>
-    <th>Time</th>
-    <th>User</th>
-    <th>Action</th>
-    <th>Document</th>
-</tr>
+                <th>Time</th>
+                <th>User</th>
+                <th>Action</th>
+                <th>Document</th>
             </tr>
         </thead>
-        
-<tbody>
-    {% for log, audit_user in logs %}
-    <tr>
-        <td>{{ log.timestamp or "N/A" }}</td>
-        <td>{{ audit_user.name }}</td>
-        <td>{{ log.action }}</td>
-        <td>{{ log.document_name or "N/A" }}</td>
-    </tr>
-    {% else %}
-    <tr>
-        <td colspan="4">No audit records found.</td>
-    </tr>
-    {% endfor %}
-</tbody>
 
+        <tbody>
+            {% for log, audit_user in logs %}
+            <tr>
+                <td>{{ log.timestamp or "N/A" }}</td>
+                <td>{{ audit_user.name }}</td>
+                <td>{{ log.action }}</td>
+                <td>{{ log.document_name or "N/A" }}</td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="4">No audit records found.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
     </table>
 </body>
 </html>

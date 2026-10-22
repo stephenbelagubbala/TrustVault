@@ -4,7 +4,7 @@ import uuid
 from audit import log_audit
 from werkzeug.utils import secure_filename
 from flask_wtf.csrf import CSRFProtect
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from functools import wraps
 
 
@@ -111,7 +111,7 @@ class RegisterForm(FlaskForm):
             EqualTo("password", message="Passwords must match.")
         ]
     )
-    
+
     submit = SubmitField("Create account")
 
 class Document(db.Model):
@@ -212,6 +212,11 @@ class DocumentShare(db.Model):
         default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
+    expires_at = db.Column(
+        db.DateTime,
+        nullable=True,
+        default=None
+    )
 
     __table_args__ = (
         db.UniqueConstraint(
@@ -223,7 +228,7 @@ class DocumentShare(db.Model):
 
 
 
-    
+
 
 # Login form
 class LoginForm(FlaskForm):
@@ -349,6 +354,15 @@ def documents():
             flash("Only PDF, TXT, and PNG files are allowed.", "error")
             return redirect(url_for("documents"))
 
+        category = request.form.get(
+            "category", "Uncategorized"
+        ).strip() or "Uncategorized"
+
+        if len(category) > 80:
+            flash("Category must be 80 characters or fewer.", "error")
+            return redirect(url_for("documents"))
+
+
         # Never use the original name as the storage path
         stored_name = f"{uuid.uuid4().hex}.{extension}"
         storage_path = os.path.join(
@@ -357,11 +371,14 @@ def documents():
 
         uploaded_file.save(storage_path)
 
+
         document = Document(
             original_filename=safe_original_name[:255],
             stored_filename=stored_name,
-            user_id=user.id
+            user_id=user.id,
+            category=category
         )
+
 
         try:
             db.session.add(document)
@@ -390,7 +407,7 @@ def documents():
             flash("Upload failed. Please try again.", "error")
             return redirect(url_for("documents"))
 
-    
+
     user_documents = db.session.execute(
         db.select(Document)
         .filter_by(user_id=user.id)
@@ -409,11 +426,15 @@ def documents():
             User.id == Document.user_id
         )
         .filter(
-            DocumentShare.shared_with_user_id == user.id
+            DocumentShare.shared_with_user_id == user.id,
+            db.or_(
+                DocumentShare.expires_at.is_(None),
+                DocumentShare.expires_at > datetime.now(timezone.utc).replace(tzinfo=None)
+            )
         )
         .order_by(DocumentShare.shared_at.desc())
     ).all()
-    
+
     owned_shares = db.session.execute(
         db.select(DocumentShare, User, Document)
         .join(
@@ -469,8 +490,18 @@ def download_document(document_id):
         )
     ).scalar_one_or_none()
 
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+
+    share_expired = (
+        share is not None
+        and share.expires_at is not None
+        and share.expires_at <= now
+    )
+
     if not is_owner and (
-        share is None or share.permission not in ("read", "edit")
+        share is None
+        or share.permission not in ("read", "edit")
+        or share_expired
     ):
         record_denied_attempt(user, "DOWNLOAD", document)
         abort(404)
@@ -534,8 +565,18 @@ def document_details(document_id):
         )
     ).scalar_one_or_none()
 
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+
+    share_expired = (
+        share is not None
+        and share.expires_at is not None
+        and share.expires_at <= now
+    )
+
     if not is_owner and (
-        share is None or share.permission not in ("read", "edit")
+        share is None
+        or share.permission not in ("read", "edit")
+        or share_expired
     ):
         record_denied_attempt(user, "VIEW", document)
         abort(404)
@@ -587,8 +628,18 @@ def edit_document(document_id):
         )
     ).scalar_one_or_none()
 
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+
+    share_expired = (
+        share is not None
+        and share.expires_at is not None
+        and share.expires_at <= now
+    )
+
     if not is_owner and (
-        share is None or share.permission != "edit"
+        share is None
+        or share.permission != "edit"
+        or share_expired
     ):
         record_denied_attempt(user, "EDIT", document)
         abort(403)
@@ -741,12 +792,32 @@ def share_document(document_id):
     recipient_email = request.form.get(
         "email", ""
     ).strip().lower()
+
     # Validate the requested sharing permission
     permission = request.form.get("permission", "read").strip().lower()
 
     if permission not in ("read", "edit"):
         flash("Invalid sharing permission.", "error")
         return redirect(url_for("documents"))
+
+    # Optional expiry time is entered in UTC
+    expiry_input = request.form.get("expires_at", "").strip()
+    expires_at = None
+
+    if expiry_input:
+        try:
+            expires_at = datetime.strptime(
+                expiry_input, "%Y-%m-%dT%H:%M"
+            ).replace(tzinfo=timezone.utc)
+
+            if expires_at <= datetime.now(timezone.utc):
+                flash("Expiry must be a future date and time (UTC).", "error")
+                return redirect(url_for("documents"))
+
+        except ValueError:
+            flash("Invalid expiry date and time.", "error")
+            return redirect(url_for("documents"))
+
 
     recipient = db.session.execute(
         db.select(User).filter_by(email=recipient_email)
@@ -775,7 +846,8 @@ def share_document(document_id):
         share = DocumentShare(
             document_id=document.id,
             shared_with_user_id=recipient.id,
-            permission=permission
+            permission=permission,
+            expires_at=expires_at
         )
 
         audit = AuditLog(
@@ -796,7 +868,7 @@ def share_document(document_id):
         app.logger.exception("Document sharing failed")
         flash("Sharing failed. Please try again.", "error")
 
-    return redirect(url_for("documents")) 
+    return redirect(url_for("documents"))
 
 @app.route(
     "/documents/<int:document_id>/revoke/<int:recipient_id>",
@@ -858,7 +930,8 @@ def revoke_document_share(document_id, recipient_id):
         flash("Could not revoke access. Please try again.", "error")
 
     return redirect(url_for("documents"))
-  
+
+
 
 
 
@@ -886,23 +959,74 @@ def audit_history():
         abort(403)
 
     selected_action = request.args.get("action", "").strip()
+    selected_user = request.args.get("user", "").strip()
+    selected_document = request.args.get("document", "").strip()
+    start_date = request.args.get("start_date", "").strip()
+    end_date = request.args.get("end_date", "").strip()
 
     query = (
         db.select(AuditLog, User)
         .join(User, AuditLog.user_id == User.id)
-        .order_by(AuditLog.timestamp.desc())
     )
 
     if selected_action:
         query = query.filter(AuditLog.action == selected_action)
 
-    logs = db.session.execute(query).all()
+    if selected_user:
+        user_search = f"%{selected_user}%"
+        query = query.filter(
+            db.or_(
+                User.name.ilike(user_search),
+                User.email.ilike(user_search)
+            )
+        )
+
+    if selected_document:
+        query = query.filter(
+            AuditLog.document_name.ilike(
+                f"%{selected_document}%"
+            )
+        )
+
+    try:
+        if start_date:
+            start = datetime.strptime(
+                start_date, "%Y-%m-%d"
+            )
+            query = query.filter(
+                AuditLog.timestamp >= start
+            )
+
+        if end_date:
+            end = datetime.strptime(
+                end_date, "%Y-%m-%d"
+            ) + timedelta(days=1)
+            query = query.filter(
+                AuditLog.timestamp < end
+            )
+
+        if start_date and end_date and start_date > end_date:
+            flash("Start date must not be after end date.", "error")
+            logs = []
+        else:
+            logs = db.session.execute(
+                query.order_by(AuditLog.timestamp.desc())
+            ).all()
+
+    except ValueError:
+        flash("Invalid date. Please select valid dates.", "error")
+        logs = []
 
     return render_template(
         "audit_logs.html",
         logs=logs,
-        selected_action=selected_action
+        selected_action=selected_action,
+        selected_user=selected_user,
+        selected_document=selected_document,
+        start_date=start_date,
+        end_date=end_date
     )
+
 
 
 
@@ -965,7 +1089,7 @@ def dashboard():
         recent_logs=recent_logs,
         is_admin=(user.role == "admin")
     )
-    
+
 @app.route("/admin/users")
 @admin_required
 def admin_users():

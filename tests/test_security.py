@@ -238,3 +238,146 @@ def test_denied_delete_is_audited(client, setup_app):
         ).scalar_one_or_none()
 
         assert audit is not None
+def test_csrf_rejects_post_without_token(client, setup_app):
+    app.config["WTF_CSRF_ENABLED"] = True
+
+    try:
+        response = client.post(
+            f"/documents/{setup_app['document_id']}/delete"
+        )
+        assert response.status_code == 400
+    finally:
+        app.config["WTF_CSRF_ENABLED"] = False
+
+def test_expired_share_cannot_view_document(client, setup_app):
+    from datetime import datetime, timedelta, timezone
+
+    with app.app_context():
+        share = db.session.execute(
+            db.select(DocumentShare).filter_by(
+                document_id=setup_app["document_id"],
+                shared_with_user_id=setup_app["reader_id"],
+            )
+        ).scalar_one()
+
+        share.expires_at = (
+            datetime.now(timezone.utc) - timedelta(hours=1)
+        ).replace(tzinfo=None)
+
+        db.session.commit()
+
+    login_as(client, setup_app["reader_id"])
+
+    response = client.get(
+        f"/documents/{setup_app['document_id']}/details"
+    )
+
+    assert response.status_code == 404
+
+
+def test_expired_share_cannot_download_document(client, setup_app):
+    from datetime import datetime, timedelta, timezone
+
+    with app.app_context():
+        share = db.session.execute(
+            db.select(DocumentShare).filter_by(
+                document_id=setup_app["document_id"],
+                shared_with_user_id=setup_app["reader_id"],
+            )
+        ).scalar_one()
+
+        share.expires_at = (
+            datetime.now(timezone.utc) - timedelta(hours=1)
+        ).replace(tzinfo=None)
+
+        db.session.commit()
+
+    login_as(client, setup_app["reader_id"])
+
+    response = client.get(
+        f"/documents/{setup_app['document_id']}/download"
+    )
+
+    assert response.status_code == 404
+
+
+def test_expired_edit_share_cannot_edit_document(client, setup_app):
+    from datetime import datetime, timedelta, timezone
+
+    with app.app_context():
+        share = db.session.execute(
+            db.select(DocumentShare).filter_by(
+                document_id=setup_app["document_id"],
+                shared_with_user_id=setup_app["editor_id"],
+            )
+        ).scalar_one()
+
+        share.expires_at = (
+            datetime.now(timezone.utc) - timedelta(hours=1)
+        ).replace(tzinfo=None)
+
+        db.session.commit()
+
+    login_as(client, setup_app["editor_id"])
+
+    response = client.get(
+        f"/documents/{setup_app['document_id']}/edit"
+    )
+
+    assert response.status_code == 403
+def test_future_expiry_allows_document_download(client, setup_app):
+    from datetime import datetime, timedelta, timezone
+
+    with app.app_context():
+        share = db.session.execute(
+            db.select(DocumentShare).filter_by(
+                document_id=setup_app["document_id"],
+                shared_with_user_id=setup_app["reader_id"],
+            )
+        ).scalar_one()
+
+        share.expires_at = (
+            datetime.now(timezone.utc) + timedelta(days=1)
+        ).replace(tzinfo=None)
+
+        db.session.commit()
+
+    login_as(client, setup_app["reader_id"])
+
+    response = client.get(
+        f"/documents/{setup_app['document_id']}/download"
+    )
+
+    assert response.status_code == 200
+
+
+def test_past_expiry_is_rejected_when_sharing(client, setup_app):
+    from datetime import datetime, timedelta, timezone
+
+    login_as(client, setup_app["owner_id"])
+
+    # Use the outsider, who has no existing share for this document.
+    past_time = (
+        datetime.now(timezone.utc) - timedelta(hours=1)
+    ).strftime("%Y-%m-%dT%H:%M")
+
+    response = client.post(
+        f"/documents/{setup_app['document_id']}/share",
+        data={
+            "email": "outsider@example.com",
+            "permission": "read",
+            "expires_at": past_time,
+        },
+    )
+
+    assert response.status_code == 302
+
+    with app.app_context():
+        share = db.session.execute(
+            db.select(DocumentShare).filter_by(
+                document_id=setup_app["document_id"],
+                shared_with_user_id=setup_app["outsider_id"],
+            )
+        ).scalar_one_or_none()
+
+        assert share is None

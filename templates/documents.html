@@ -41,7 +41,7 @@
     </style>
 </head>
 <body>
-    
+
 <nav style="background: #172033; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
     <a href="{{ url_for('home') }}"
        style="color: white; margin-right: 20px; text-decoration: none;">
@@ -64,7 +64,7 @@
     <p>
     <a href="{{ url_for('dashboard') }}">Dashboard</a> |
     <a href="{{ url_for('audit_history') }}">Audit History</a> |
-    
+
 <form method="POST" action="{{ url_for('logout') }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <button type="submit">Logout</button>
@@ -72,7 +72,7 @@
 
 </p>
     <p>Upload a PDF, TXT, or PNG file. Maximum size: 5 MB.</p>
-    
+
 <h2>Search My Documents</h2>
 
 <input
@@ -110,6 +110,18 @@ function searchDocuments() {
                value="{{ csrf_token() }}">
 
         <label for="file">Choose a document:</label>
+
+        <label for="category">Document category:</label>
+        <input
+            type="text"
+            id="category"
+            name="category"
+            maxlength="80"
+            placeholder="e.g. Education, Work, Personal"
+            value="Uncategorized"
+        >
+        <br><br>
+
         <input
             type="file"
             id="file"
@@ -178,6 +190,7 @@ function searchDocuments() {
     Access permission:
 </label>
 
+
 <select
     id="permission-{{ document.id }}"
     name="permission"
@@ -187,7 +200,23 @@ function searchDocuments() {
     <option value="edit">Edit</option>
 </select>
 
-    <button type="submit">Share Document</button>
+<label for="expires-at-{{ document.id }}">
+    Expiry date and time (UTC, optional):
+</label>
+
+<input
+    type="datetime-local"
+    id="expires-at-{{ document.id }}"
+    name="expires_at"
+>
+
+<small>
+    Leave blank for permanent access. Expired access will be denied.
+</small>
+<br>
+
+<button type="submit">Share Document</button>
+
 </form>
             </li>
         {% endfor %}
@@ -197,7 +226,7 @@ function searchDocuments() {
     {% endif %}
 
     <p><a href="{{ url_for('home') }}">Back to home</a></p>
-    
+
 <hr>
 
 <h2>Shared with me</h2>
@@ -256,7 +285,7 @@ function searchDocuments() {
                         document_id=share.document_id,
                         recipient_id=recipient.id
                     ) }}"
-                    onsubmit="return confirm('Revoke this user’s access?');"
+                    onsubmit="return confirm('Revoke this user access?');"
                 >
                     <input
                         type="hidden"

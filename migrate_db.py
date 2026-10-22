@@ -21,7 +21,8 @@ def migrate():
                 "category": "VARCHAR(80) NOT NULL DEFAULT 'Uncategorized'"
             },
             "document_share": {
-                "permission": "VARCHAR(10) NOT NULL DEFAULT 'read'"
+                "permission": "VARCHAR(10) NOT NULL DEFAULT 'read'",
+                "expires_at": "DATETIME"
             },
         }
 
