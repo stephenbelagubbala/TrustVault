@@ -397,18 +397,22 @@ def documents():
         .order_by(Document.uploaded_at.desc())
     ).scalars().all()
 
-    # Get shared documents together with their permissions
+    # Get shared documents, their permissions, and their owners
     shared_documents = db.session.execute(
-    db.select(Document, DocumentShare.permission)
-    .join(
-        DocumentShare,
-        DocumentShare.document_id == Document.id
-    )
-    .filter(
-        DocumentShare.shared_with_user_id == user.id
-    )
-    .order_by(DocumentShare.shared_at.desc())
-).all()
+        db.select(Document, DocumentShare.permission, User)
+        .join(
+            DocumentShare,
+            DocumentShare.document_id == Document.id
+        )
+        .join(
+            User,
+            User.id == Document.user_id
+        )
+        .filter(
+            DocumentShare.shared_with_user_id == user.id
+        )
+        .order_by(DocumentShare.shared_at.desc())
+    ).all()
     
     owned_shares = db.session.execute(
         db.select(DocumentShare, User, Document)

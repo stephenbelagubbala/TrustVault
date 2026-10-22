@@ -78,20 +78,24 @@
 <input
     type="text"
     id="documentSearch"
-    placeholder="Search documents by filename..."
+    placeholder="Search filename, category, owner, date, or permission..."
     oninput="searchDocuments()"
 >
 
 <script>
 function searchDocuments() {
     const input = document.getElementById("documentSearch");
-    const filter = input.value.toLowerCase();
-    const documents = document.querySelectorAll(".my-document");
+    const filter = input.value.trim().toLowerCase();
+
+    const documents = document.querySelectorAll(
+        ".my-document, .shared-document"
+    );
 
     documents.forEach(function (document) {
-        const filename = document.textContent.toLowerCase();
+        const text = document.textContent.toLowerCase();
+
         document.style.display =
-            filename.includes(filter) ? "" : "none";
+            text.includes(filter) ? "" : "none";
     });
 }
 </script>
@@ -201,9 +205,13 @@ function searchDocuments() {
 
 {% if shared_documents %}
     <ul>
-        {% for document, permission in shared_documents %}
-            <li>
+        {% for document, permission, owner in shared_documents %}
+            <li class="shared-document">
                 <strong>{{ document.original_filename }}</strong>
+                <br>
+<small>Owner: {{ owner.name }} ({{ owner.email }})</small>
+                <br>
+<small>Category: {{ document.category }}</small>
                 <br>
 <small>Access permission: {{ permission|capitalize }}</small>
                 <br>
