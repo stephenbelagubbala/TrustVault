@@ -779,3 +779,30 @@ def test_upload_rejects_fake_png(client, setup_app):
         ).scalar_one_or_none()
 
         assert document is None
+def test_expired_share_is_hidden_from_shared_documents(client, setup_app):
+    from datetime import datetime, timedelta, timezone
+
+    with app.app_context():
+        share = db.session.execute(
+            db.select(DocumentShare).filter_by(
+                document_id=setup_app["document_id"],
+                shared_with_user_id=setup_app["reader_id"],
+            )
+        ).scalar_one()
+
+        share.expires_at = (
+            datetime.now(timezone.utc) - timedelta(hours=1)
+        ).replace(tzinfo=None)
+
+        db.session.commit()
+
+    login_as(client, setup_app["reader_id"])
+
+    response = client.get("/documents")
+
+    assert response.status_code == 200
+    assert b"shared_documents" not in response.data
+
+
+
+
