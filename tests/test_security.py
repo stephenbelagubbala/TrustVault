@@ -1,4 +1,6 @@
 
+from urllib import response
+
 import pytest
 
 from app import app, db, User, Document, DocumentShare, AuditLog
@@ -162,6 +164,99 @@ def test_revoked_share_cannot_view_document(client, setup_app):
         f"/documents/{setup_app['document_id']}/details"
     )
     assert response.status_code == 404
+
+def test_revoked_share_cannot_download_document(client, setup_app):
+    with app.app_context():
+        share = db.session.execute(
+            db.select(DocumentShare).filter_by(
+                document_id=setup_app["document_id"],
+                shared_with_user_id=setup_app["reader_id"],
+            )
+        ).scalar_one()
+
+        db.session.delete(share)
+        db.session.commit()
+
+    login_as(client, setup_app["reader_id"])
+
+    response = client.get(
+        f"/documents/{setup_app['document_id']}/download"
+    )
+    assert response.status_code == 404
+
+def test_owner_can_revoke_share_and_audit_it(client, setup_app):
+    login_as(client, setup_app["owner_id"])
+
+    response = client.post(
+        f"/documents/{setup_app['document_id']}/revoke/"
+        f"{setup_app['reader_id']}",
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 302
+
+    with app.app_context():
+        share = db.session.execute(
+            db.select(DocumentShare).filter_by(
+                document_id=setup_app["document_id"],
+                shared_with_user_id=setup_app["reader_id"],
+            )
+        ).scalar_one_or_none()
+
+        assert share is None
+
+        audit = db.session.execute(
+            db.select(AuditLog).filter_by(
+                action="REVOKE_SHARE",
+                document_id=setup_app["document_id"],
+                user_id=setup_app["owner_id"],
+            )
+        ).scalar_one_or_none()
+
+        assert audit is not None
+
+def test_non_owner_cannot_revoke_share(client, setup_app):
+    login_as(client, setup_app["reader_id"])
+
+    response = client.post(
+        f"/documents/{setup_app['document_id']}/revoke/"
+        f"{setup_app['editor_id']}",
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 404
+
+    with app.app_context():
+        share = db.session.execute(
+            db.select(DocumentShare).filter_by(
+                document_id=setup_app["document_id"],
+                shared_with_user_id=setup_app["editor_id"],
+            )
+        ).scalar_one_or_none()
+
+        assert share is not None
+
+
+def test_revoked_editor_cannot_edit_document(client, setup_app):
+    with app.app_context():
+        share = db.session.execute(
+            db.select(DocumentShare).filter_by(
+                document_id=setup_app["document_id"],
+                shared_with_user_id=setup_app["editor_id"],
+            )
+        ).scalar_one()
+
+        db.session.delete(share)
+        db.session.commit()
+
+    login_as(client, setup_app["editor_id"])
+
+    response = client.get(
+        f"/documents/{setup_app['document_id']}/edit"
+    )
+
+    assert response.status_code == 403
+
 def test_editor_can_update_document_details(client, setup_app):
     login_as(client, setup_app["editor_id"])
 
@@ -199,6 +294,52 @@ def test_denied_download_is_audited(client, setup_app):
 
         assert audit is not None
 
+def test_successful_download_is_audited(client, setup_app):
+    login_as(client, setup_app["reader_id"])
+
+    response = client.get(
+        f"/documents/{setup_app['document_id']}/download"
+    )
+
+    assert response.status_code == 200
+
+    with app.app_context():
+        audit = db.session.execute(
+            db.select(AuditLog).filter_by(
+                user_id=setup_app["reader_id"],
+                action="DOWNLOAD",
+                document_id=setup_app["document_id"],
+            )
+        ).scalar_one_or_none()
+
+        assert audit is not None
+
+
+def test_successful_edit_is_audited(client, setup_app):
+    login_as(client, setup_app["editor_id"])
+
+    response = client.post(
+        f"/documents/{setup_app['document_id']}/edit",
+        data={
+            "original_filename": "audited-edit.txt",
+            "category": "Audit Test",
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 302
+
+    with app.app_context():
+        audit = db.session.execute(
+            db.select(AuditLog).filter_by(
+                user_id=setup_app["editor_id"],
+                action="EDIT",
+                document_id=setup_app["document_id"],
+                document_name="audited-edit.txt",
+            )
+        ).scalar_one_or_none()
+
+        assert audit is not None
 
 def test_denied_edit_is_audited(client, setup_app):
     login_as(client, setup_app["reader_id"])
@@ -470,6 +611,47 @@ def test_normal_user_dashboard_shows_only_own_activity(
 import io
 
 
+def test_successful_upload_is_audited(client, setup_app):
+    import io
+
+    login_as(client, setup_app["owner_id"])
+
+    response = client.post(
+        "/documents",
+        data={
+            "file": (
+                io.BytesIO(b"TrustVault audit test"),
+                "audit-test.txt",
+            ),
+            "category": "Audit Test",
+        },
+        content_type="multipart/form-data",
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 200
+
+    with app.app_context():
+        document = db.session.execute(
+            db.select(Document).filter_by(
+                user_id=setup_app["owner_id"],
+                original_filename="audit-test.txt",
+            )
+        ).scalar_one_or_none()
+
+        assert document is not None
+
+        audit = db.session.execute(
+            db.select(AuditLog).filter_by(
+                user_id=setup_app["owner_id"],
+                action="UPLOAD",
+                document_id=document.id,
+                document_name="audit-test.txt",
+            )
+        ).scalar_one_or_none()
+
+        assert audit is not None
+
 def test_upload_rejects_unsupported_extension(client, setup_app):
     login_as(client, setup_app["owner_id"])
 
@@ -482,6 +664,8 @@ def test_upload_rejects_unsupported_extension(client, setup_app):
         content_type="multipart/form-data",
     )
 
+    print("STATUS:", response.status_code)
+    print("RESPONSE:", response.get_data(as_text=True)[:1500])
     assert response.status_code == 302
 
     with app.app_context():
