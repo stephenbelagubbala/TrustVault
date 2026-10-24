@@ -381,3 +381,88 @@ def test_past_expiry_is_rejected_when_sharing(client, setup_app):
         ).scalar_one_or_none()
 
         assert share is None
+def test_document_deletion_preserves_audit_history(client, setup_app):
+    login_as(client, setup_app["owner_id"])
+
+    response = client.post(
+        f"/documents/{setup_app['document_id']}/delete"
+    )
+
+    assert response.status_code == 302
+
+    with app.app_context():
+        # The document should be deleted.
+        document = db.session.get(
+            Document, setup_app["document_id"]
+        )
+        assert document is None
+
+        # The deletion audit record should remain.
+        audit = db.session.execute(
+            db.select(AuditLog).filter_by(
+                user_id=setup_app["owner_id"],
+                action="DELETE",
+                document_name="sample.txt",
+            )
+        ).scalar_one_or_none()
+
+        assert audit is not None
+
+def test_admin_dashboard_shows_global_activity(client, setup_app):
+    with app.app_context():
+        admin = User(
+            name="Admin",
+            email="admin@example.com",
+            password_hash="test-hash",
+            role="admin",
+        )
+        db.session.add(admin)
+        db.session.flush()
+
+        db.session.add_all([
+            AuditLog(
+                user_id=setup_app["owner_id"],
+                action="UPLOAD",
+                document_name="owner-activity.txt",
+            ),
+            AuditLog(
+                user_id=setup_app["reader_id"],
+                action="DOWNLOAD",
+                document_name="reader-activity.txt",
+            ),
+        ])
+        db.session.commit()
+        admin_id = admin.id
+
+    login_as(client, admin_id)
+    response = client.get("/dashboard")
+
+    assert response.status_code == 200
+    assert b"owner-activity.txt" in response.data
+    assert b"reader-activity.txt" in response.data
+
+
+def test_normal_user_dashboard_shows_only_own_activity(
+    client, setup_app
+):
+    with app.app_context():
+        db.session.add_all([
+            AuditLog(
+                user_id=setup_app["owner_id"],
+                action="UPLOAD",
+                document_name="owner-private-activity.txt",
+            ),
+            AuditLog(
+                user_id=setup_app["reader_id"],
+                action="DOWNLOAD",
+                document_name="reader-private-activity.txt",
+            ),
+        ])
+        db.session.commit()
+
+    login_as(client, setup_app["owner_id"])
+    response = client.get("/dashboard")
+
+    assert response.status_code == 200
+    assert b"owner-private-activity.txt" in response.data
+    assert b"reader-private-activity.txt" not in response.data

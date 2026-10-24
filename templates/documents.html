@@ -145,6 +145,8 @@ function searchDocuments() {
 <small>
     Category: {{ document.category }}
 </small><br>
+<small>Owner: You</small><br>
+<small>Permission: Owner</small><br>
 
 <small>
     Uploaded: {{ document.uploaded_at.strftime("%Y-%m-%d %H:%M UTC") }}
@@ -274,9 +276,19 @@ function searchDocuments() {
     <ul>
         {% for share, recipient, document in owned_shares %}
             <li>
-                <strong>{{ share.document_name if share.document_name else "Shared document" }}</strong>
+                <strong>{{ document.original_filename }}</strong>
                 <br>
                 Shared with: {{ recipient.email }}
+                <br>
+Permission: {{ share.permission|capitalize }}
+<br>
+Expiry:
+{% if share.expires_at %}
+    {{ share.expires_at.strftime("%Y-%m-%d %H:%M UTC") }}
+{% else %}
+    Never (permanent access)
+{% endif %}
+<br>
                 <br>
                 <form
                     method="POST"

@@ -1072,13 +1072,23 @@ def dashboard():
         .filter(Document.user_id == user.id)
     ).scalar_one()
 
-    # Get recent actions performed by this user
-    recent_logs = db.session.execute(
-        db.select(AuditLog)
-        .filter_by(user_id=user.id)
-        .order_by(AuditLog.timestamp.desc())
-        .limit(5)
-    ).scalars().all()
+
+    # Get recent activity based on the user's role
+    if user.role == "admin":
+        # Administrators see activity across all users.
+        recent_logs = db.session.execute(
+            db.select(AuditLog)
+            .order_by(AuditLog.timestamp.desc())
+            .limit(5)
+        ).scalars().all()
+    else:
+        # Normal users see only their own activity.
+        recent_logs = db.session.execute(
+            db.select(AuditLog)
+            .filter_by(user_id=user.id)
+            .order_by(AuditLog.timestamp.desc())
+            .limit(5)
+        ).scalars().all()
 
     return render_template(
         "dashboard.html",
@@ -1089,6 +1099,7 @@ def dashboard():
         recent_logs=recent_logs,
         is_admin=(user.role == "admin")
     )
+
 
 @app.route("/admin/users")
 @admin_required
