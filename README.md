@@ -134,7 +134,7 @@ The project has been tested for the following scenarios:
 
 ## 🌐 Live Demo
 
-**Live application:** [Add your deployed Render URL here]
+**Live application:** https://trustvault-qn2c.onrender.com
 
 **GitHub repository:** https://github.com/stephenbelagubbala/TrustVault
 
@@ -163,7 +163,3 @@ TrustVault demonstrates practical application development concepts, including:
 ## 👨‍💻 Author
 
 **Developed as a software project to demonstrate secure document management and controlled document sharing.**
-
-## 📄 License
-
-Add the appropriate license for this repository if one has been selected.
