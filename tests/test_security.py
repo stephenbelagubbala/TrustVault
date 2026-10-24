@@ -466,3 +466,132 @@ def test_normal_user_dashboard_shows_only_own_activity(
     assert response.status_code == 200
     assert b"owner-private-activity.txt" in response.data
     assert b"reader-private-activity.txt" not in response.data
+
+import io
+
+
+def test_upload_rejects_unsupported_extension(client, setup_app):
+    login_as(client, setup_app["owner_id"])
+
+    response = client.post(
+        "/documents",
+        data={
+            "file": (io.BytesIO(b"fake executable"), "malware.exe"),
+            "category": "Testing",
+        },
+        content_type="multipart/form-data",
+    )
+
+    assert response.status_code == 302
+
+    with app.app_context():
+        document = db.session.execute(
+            db.select(Document).filter_by(
+                original_filename="malware.exe"
+            )
+        ).scalar_one_or_none()
+
+        assert document is None
+
+
+def test_upload_rejects_filename_without_extension(client, setup_app):
+    login_as(client, setup_app["owner_id"])
+
+    response = client.post(
+        "/documents",
+        data={
+            "file": (io.BytesIO(b"test content"), "invalidname"),
+            "category": "Testing",
+        },
+        content_type="multipart/form-data",
+    )
+
+    assert response.status_code == 302
+
+    with app.app_context():
+        document = db.session.execute(
+            db.select(Document).filter_by(
+                original_filename="invalidname"
+            )
+        ).scalar_one_or_none()
+
+        assert document is None
+
+
+def test_upload_rejects_file_larger_than_5mb(client, setup_app):
+    login_as(client, setup_app["owner_id"])
+
+    response = client.post(
+        "/documents",
+        data={
+            "file": (
+                io.BytesIO(b"A" * (5 * 1024 * 1024 + 1)),
+                "large.txt",
+            ),
+            "category": "Testing",
+        },
+        content_type="multipart/form-data",
+    )
+
+    assert response.status_code == 413
+
+    with app.app_context():
+        document = db.session.execute(
+            db.select(Document).filter_by(
+                original_filename="large.txt"
+            )
+        ).scalar_one_or_none()
+
+        assert document is None
+def test_upload_rejects_fake_pdf(client, setup_app):
+    login_as(client, setup_app["owner_id"])
+
+    response = client.post(
+        "/documents",
+        data={
+            "file": (
+                io.BytesIO(b"not a real PDF"),
+                "fake.pdf",
+            ),
+            "category": "Testing",
+        },
+        content_type="multipart/form-data",
+    )
+
+    assert response.status_code == 302
+
+    with app.app_context():
+        document = db.session.execute(
+            db.select(Document).filter_by(
+                original_filename="fake.pdf"
+            )
+        ).scalar_one_or_none()
+
+        assert document is None
+
+
+def test_upload_rejects_fake_png(client, setup_app):
+    login_as(client, setup_app["owner_id"])
+
+    response = client.post(
+        "/documents",
+        data={
+            "file": (
+                io.BytesIO(b"not a real PNG"),
+                "fake.png",
+            ),
+            "category": "Testing",
+        },
+        content_type="multipart/form-data",
+    )
+
+    assert response.status_code == 302
+
+    with app.app_context():
+        document = db.session.execute(
+            db.select(Document).filter_by(
+                original_filename="fake.png"
+            )
+        ).scalar_one_or_none()
+
+        assert document is None

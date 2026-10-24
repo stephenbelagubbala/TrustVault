@@ -42,6 +42,32 @@ app.config["UPLOAD_FOLDER"] = os.path.join(
 os.makedirs(app.config["UPLOAD_FOLDER"], exist_ok=True)
 
 ALLOWED_EXTENSIONS = {"pdf", "txt", "png"}
+
+def has_valid_file_content(file, extension):
+    """Check that uploaded content matches its expected file type."""
+    file.seek(0)
+    header = file.read(8)
+    file.seek(0)
+
+    if extension == "pdf":
+        return header.startswith(b"%PDF-")
+
+    if extension == "png":
+        return header.startswith(b"\x89PNG\r\n\x1a\n")
+
+    if extension == "txt":
+        # Text files should contain valid UTF-8 text, not binary data.
+        try:
+            content = file.read()
+            content.decode("utf-8")
+            return b"\x00" not in content
+        except UnicodeDecodeError:
+            return False
+        finally:
+            file.seek(0)
+
+    return False
+
 csrf = CSRFProtect(app)
 
 db = SQLAlchemy(app)
@@ -353,6 +379,14 @@ def documents():
         if extension not in ALLOWED_EXTENSIONS:
             flash("Only PDF, TXT, and PNG files are allowed.", "error")
             return redirect(url_for("documents"))
+        
+        if not has_valid_file_content(uploaded_file, extension):
+            flash(
+                "File contents do not match the selected file type.",
+                "error",
+            )
+            return redirect(url_for("documents"))
+
 
         category = request.form.get(
             "category", "Uncategorized"
